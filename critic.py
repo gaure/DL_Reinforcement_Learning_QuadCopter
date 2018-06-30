@@ -1,4 +1,4 @@
-from keras import layers, models, optimizers
+from keras import layers, models, optimizers, regularizers
 from keras import backend as K
 
 class Critic:
@@ -24,17 +24,21 @@ class Critic:
                                name='actions')
 
         # States network path
-        net_states = layers.Dense(units=128,
+        net_states = layers.Dense(units=64,
+                                  kernel_regularizer=regularizers.l2(0.001),
                                   activation='relu')(states)
         net_states = layers.BatchNormalization()(net_states)
-        net_states = layers.Dense(units=256,
+        net_states = layers.Dense(units=128,
+                                  kernel_regularizer=regularizers.l2(0.001),
                                   activation='relu')(net_states)
 
         # Actions network path
-        net_actions = layers.Dense(units=128,
+        net_actions = layers.Dense(units=64,
+                                   kernel_regularizer=regularizers.l2(0.001),
                                    activation='relu')(actions)
         net_actions = layers.BatchNormalization()(net_actions)
-        net_actions = layers.Dense(units=256,
+        net_actions = layers.Dense(units=128,
+                                   kernel_regularizer=regularizers.l2(0.001),
                                    activation='relu')(net_actions)
 
         # Combine both paths
@@ -51,12 +55,14 @@ class Critic:
 
         # Define the optimizer. Using loss function "Mean Square Error"
         # Between the Q_values (this logits) and the Q_targets
-        # Calculated interacting with the environment and retrieved
-        # from the ReplayBuffer.
-        optimizer = optimizers.Adam(lr=0.01)
+        # Calculated using the Q(s,a) Sarsa function and using the critic
+        # target model next_state Q_value. This is done in the agent
+        optimizer = optimizers.Adam(lr=0.001) # Tried 0.01
         self.model.compile(optimizer=optimizer, loss='mse')
 
         # Compute the action gradients used in the loss function of the actor
+        # The actions_gradients is the logits of this net "Q_values" and
+        # the actions vector which is the net input
         action_gradients = K.gradients(Q_values, actions)
 
         # Function to share the action_gradients with the actor

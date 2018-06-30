@@ -1,5 +1,7 @@
 import numpy as np
 from physics_sim import PhysicsSim
+from collections import deque
+import math
 
 class Task():
     """Task (environment) that defines the goal and provides feedback to the agent."""
@@ -24,21 +26,26 @@ class Task():
         self.action_size = 4
 
         # Goal
-        self.target_pos = target_pos if target_pos is not None else np.array([0., 0., 1.]) 
+        self.target_pos = target_pos if target_pos is not None else np.array([0., 0., 10., 0., 0., 0.]) 
 
+    
+    def sigmoid(self,x):
+          return 1 / (1 + math.exp(-x))
+    
     def get_reward(self,rotor_speeds):
         """Uses current pose of sim to return reward."""
-        # Calculate a 5 % of the thrust as incentive until it reaches the correct high
-        thrust_incentive = 0.0 if self.target_pos.all() == np.array([0., 0., 1., 0., 0., 0.]).all() else (np.asarray(self.sim.get_propeler_thrust(rotor_speeds)) * 0.05).sum()
-        # If you are at the correct high give a 0.3 of incentive so you stay
-        hovering_incentive = 0.01 if self.sim.pose[:3].all() != self.target_pos.all() else 0.0
-        # I don't want it to move sideways so I will penalized it if the speed on x or y changes from 0
-        velocity_penalty = 0.0 if self.sim.v[0] == 0.0 and self.sim.v[1] == 0.0 else .1 * (self.sim.v[0] + self.sim.v[1])
-        # Penalty if your euler angles are not 0
-        euler_angles = .2*(abs(self.sim.pose[3:] - self.target_pos)).sum() if self.sim.pose[3:] != self.target_pos[3:] else 0.0
+        # If the rotors have different rpms get a penalty of 70% of the difference between the 1 and 2 and 3 and 4
+        rotor_diff_penalty = .6*(abs(np.diff(np.array(rotor_speeds)).sum()))
         
-        # Calculate reward
-        reward = 1.-.2*(abs(self.sim.pose[:3] - self.target_pos)).sum() - euler_angles - velocity_penalty
+        # Penalize the quadcopter if changes its euler angles change too much
+        q = deque(maxlen=2)
+        q.append(self.sim.pose[3:])        
+        abrupt_change_penalty = .3*(abs(np.array(q[0]) - np.array(q[1])).sum()) if len(q) == 2 else 0.0
+
+        # Calculate reward use a sigmoid function to estabilized the rewards
+        # function by clipping the rewards between 0 and 1
+       
+        reward = 1. - self.sigmoid(.3*(abs(self.sim.pose[:3] - self.target_pos[:3])).sum() + rotor_diff_penalty + abrupt_change_penalty ) 
         return reward
 
     def step(self, rotor_speeds):
