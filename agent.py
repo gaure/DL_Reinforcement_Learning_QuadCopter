@@ -4,20 +4,21 @@ from task import Task
 from utils import OUNoise
 from utils import ReplayBuffer
 import numpy as np
+import h5py
 
 class AgentDDPG():
 
-    def __init__(self, task):
+    def __init__(self, env):
         """
 
         :param task: (class instance) Instructions about the goal and reward
         """
 
-        self.task = task
-        self.state_size = task.state_size
-        self.action_size = task.action_size
-        self.action_low = task.action_low
-        self.action_high = task.action_high
+        self.env = env
+        self.state_size = env.observation_space.shape[0]
+        self.action_size = env.action_space.shape[0]
+        self.action_low = env.action_space.low
+        self.action_high = env.action_space.high
         self.score = 0.0
         self.best = 0.0
 
@@ -29,6 +30,12 @@ class AgentDDPG():
                                  self.action_size,
                                  self.action_low,
                                  self.action_high)
+
+        # Save actor model for future use
+        actor_local_model_yaml = self.actor_local.model.to_yaml()
+        with open("actor_local_model.yaml", "w") as yaml_file:
+            yaml_file.write(actor_local_model_yaml)
+
         self.actor_target = Actor(self.state_size,
                                   self.action_size,
                                   self.action_low,
@@ -55,7 +62,7 @@ class AgentDDPG():
 
         # Initialize the Replay Memory
         self.buffer_size = 100000
-        self.batch_size = 64
+        self.batch_size = 64 # original 64
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
 
@@ -65,21 +72,25 @@ class AgentDDPG():
 
     # Actor can reset the episode
     def reset_episode(self):
+        # Your total reward goes to 0 same as your count
         self.total_reward = 0.0
         self.count = 0
         # Reset the gaussian noise
         self.noise.reset()
         # Gets a new state from the task
-        state = self.task.reset()
-        # Protect the state obtaned from the task
+        state = self.env.reset()
+        # Protect the state obtained from the task
         # by storing it as last state
         self.last_state = state
         # Return the state obtained from task
         return state
 
-    # Actor can executes a leraning step
+    # Actor interact with the environment
     def step(self, action, reward, next_state, done):
+        # Add to the total reward the reward of this time step
         self.total_reward += reward
+        # Increase your count based on the number of rewards
+        # received in the episode
         self.count += 1
         # Stored previous state in the replay buffer
         self.memory.add(self.last_state,
@@ -97,7 +108,7 @@ class AgentDDPG():
         # Roll over last state action
         self.last_state = next_state
 
-    # Actor can interact with the environment by acting
+    # Actor determines what to do based on the policy
     def act(self,state):
         # Given a state return the action recommended by the policy
         # Reshape the state to fit the keras model input
@@ -118,9 +129,6 @@ class AgentDDPG():
         Network learns from experiences not form interaction with the
         environment
         """
-        self.score = self.total_reward / float(self.count) if self.count else 0.0
-        if self.score > self.best:
-            self.best = self.score
             
         # Reshape the experience tuples in separate arrays of states, actions
         # rewards, next_state, done
@@ -168,4 +176,15 @@ class AgentDDPG():
         new_weights = self.tau * local_weights + (1 - self.tau) * target_weights
         target_model.set_weights(new_weights)
 
-        
+    def get_episode_score(self):
+        """
+        Calculate the episode scores
+        :return: None
+        """
+        # Update score and best score
+        self.score = self.total_reward / float(self.count) if self.count else 0.0
+        if self.score > self.best:
+            self.best = self.score
+
+    def save_model_weights(self, actor_model):
+        actor_model.model.save_weights('weights.h5')
