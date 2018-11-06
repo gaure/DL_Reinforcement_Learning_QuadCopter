@@ -94,6 +94,9 @@ class AgentDDPG():
             # Train the networks using the experiences
             self.learn(experiences)
 
+        # Roll over last state action
+        self.last_state = next_state
+
     # Actor can interact with the environment by acting
     def act(self,state):
         # Given a state return the action recommended by the policy
